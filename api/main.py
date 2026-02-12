@@ -1,8 +1,9 @@
 # PixelFort - Minimal FastAPI Application
 # Let's start with the simplest possible API server.
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from api.schemas import UserCreate, UserResponse 
 import logging
 
 # Import our settings
@@ -75,3 +76,43 @@ def list_users(db: Session = Depends(get_db)):
             for user in users
         ]
     }
+@app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
+    """
+    Create a new user.
+    
+    - Validates email format
+    - Checks for duplicates
+    - Hashes password (fake for now)
+    - Saves to database
+    """
+    # Check if email already exists
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
+    
+    # Create new user (in real app, hash the password!)
+    new_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        hashed_password=f"fake_hash_{user_data.password}"  # TODO: Use bcrypt!
+    )
+    
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)  # Get the generated ID
+    
+    logger.info(f"Created user: {new_user.username} ({new_user.email})")
+    
+    return new_user
