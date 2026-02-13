@@ -116,3 +116,43 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Created user: {new_user.username} ({new_user.email})")
     
     return new_user
+
+@app.get("/users/{user_id}", response_model=UserResponse)
+def get_user(user_id: int, db: Session = Depends(get_db)):
+    """
+    Get a specific user by ID.
+
+    - Returns 404 if user doesn't exist
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    return user
+
+@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a user by ID.
+
+    - Returns 404 if user doesn't exist
+    - Returns 204 No Content on success
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+
+    db.delete(user)
+    db.commit()
+
+    logger.info(f"Deleted user: {user.username} (id={user.id})")
+
+    # 204 returns no content (return None or nothing)
