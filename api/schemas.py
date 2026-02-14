@@ -30,3 +30,11 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True  # Allows creating from SQLAlchemy model
+
+class UserUpdate(BaseModel):
+    """
+    Schema for updating a user.
+    All fields are optional - only update what's provided.
+    """
+    email: EmailStr | None = None
+    username: str | None = Field(None, min_length=3, max_length=50)
