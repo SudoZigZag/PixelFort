@@ -1,5 +1,5 @@
 from api.database import engine, Base
-from api.models import User  # Import all models
+from api.models import User, Photo  # Import all models
 
 def init_db():
     print("Creating database tables...")

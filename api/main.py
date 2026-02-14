@@ -1,15 +1,16 @@
 # PixelFort - Minimal FastAPI Application
 # Let's start with the simplest possible API server.
 
+from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from api.schemas import UserCreate, UserResponse, UserUpdate
+from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
 import logging
 
 # Import our settings
 from api.config import settings
 from api.database import get_db 
-from api.models import User
+from api.models import User, Photo
 
 # Get logger (will use LOG_LEVEL from settings)
 logger = logging.getLogger(__name__)
@@ -203,3 +204,79 @@ def update_user(user_id: int, user_data: UserUpdate, db: Session = Depends(get_d
     logger.info(f"Updated user {user_id}: {user.username}")
     
     return user
+
+@app.post("/photos", response_model=PhotoResponse, status_code=status.HTTP_201_CREATED)
+def create_photo(photo_data: PhotoCreate, db: Session = Depends(get_db)):
+    """
+    Create a new photo record.
+    
+    For now, just stores metadata (no actual file upload).
+    """
+    # Verify user exists
+    user = db.query(User).filter(User.id == photo_data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {photo_data.user_id} not found"
+        )
+    
+    # Create photo record
+    new_photo = Photo(**photo_data.model_dump())
+    
+    db.add(new_photo)
+    db.commit()
+    db.refresh(new_photo)
+    
+    logger.info(f"Created photo: {new_photo.filename} for user {photo_data.user_id}")
+    
+    return new_photo
+
+@app.get("/photos", response_model=List[PhotoResponse])
+def list_photos(db: Session = Depends(get_db)):
+    """
+    Get all photos.
+    """
+    photos = db.query(Photo).all()
+    return photos
+
+
+@app.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_photo(photo_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a photo by ID.
+    """
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    db.delete(photo)
+    db.commit()
+    
+    logger.info(f"Deleted photo: {photo.filename} (id={photo.id})")
+
+@app.get("/photos/{photo_id}", response_model=PhotoResponse)
+def get_photo(photo_id: int, db: Session = Depends(get_db)):
+    """
+    Get a specific photo by ID.
+    """
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    return photo
+
+@app.get("/photos", response_model=list[PhotoResponse])
+def list_photos(db: Session = Depends(get_db)):
+    """
+    Get all photos.
+    """
+    photos = db.query(Photo).all()
+    return photos

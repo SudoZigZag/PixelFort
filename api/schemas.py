@@ -7,6 +7,7 @@ These are DIFFERENT from database models:
 """
 
 from pydantic import BaseModel, EmailStr, Field
+from datetime import date, datetime
 
 
 class UserCreate(BaseModel):
@@ -27,6 +28,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    created_at: datetime
     
     class Config:
         from_attributes = True  # Allows creating from SQLAlchemy model
@@ -38,3 +40,32 @@ class UserUpdate(BaseModel):
     """
     email: EmailStr | None = None
     username: str | None = Field(None, min_length=3, max_length=50)
+
+
+class PhotoCreate(BaseModel):
+    """
+    Schema for creating a photo (metadata only for now).
+    """
+    filename: str
+    original_filename: str
+    file_path: str
+    file_size: int
+    mime_type: str = "image/jpeg"
+    user_id: int
+
+
+class PhotoResponse(BaseModel):
+    """
+    Schema for photo response.
+    """
+    id: int
+    filename: str
+    original_filename: str
+    file_path: str
+    file_size: int
+    mime_type: str
+    user_id: int
+    uploaded_at: datetime 
+    
+    class Config:
+        from_attributes = True

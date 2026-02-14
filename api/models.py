@@ -27,3 +27,28 @@ class User(Base):
     def __repr__(self):
         """String representation (for debugging)"""
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"
+
+class Photo(Base):
+    """
+    Photo table.
+    
+    Stores metadata about uploaded photos.
+    """
+    __tablename__ = "photos"
+    
+    # Columns
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    original_filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_size = Column(Integer)  # Size in bytes
+    mime_type = Column(String)   # image/jpeg, image/png, etc.
+    
+    # Who uploaded it (for now, just store user_id as integer)
+    user_id = Column(Integer, nullable=False)
+    
+    # Timestamps
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    def __repr__(self):
+        return f"<Photo(id={self.id}, filename={self.filename})>"
