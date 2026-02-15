@@ -2,10 +2,12 @@
 # Let's start with the simplest possible API server.
 
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, status
+from pathlib import Path
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
 import logging
+import hashlib
 
 # Import our settings
 from api.config import settings
@@ -280,3 +282,76 @@ def list_photos(db: Session = Depends(get_db)):
     """
     photos = db.query(Photo).all()
     return photos
+
+@app.post("/photos/upload", response_model=PhotoResponse, status_code=status.HTTP_201_CREATED)
+async def upload_photo(
+    file: UploadFile = File(...),
+    user_id: int = 1,  # For now, hardcoded (TODO: get from auth)
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a photo file with content-addressable storage.
+    
+    - Computes SHA256 hash of file content
+    - Saves with hash as filename (deduplication!)
+    - Stores metadata in database
+    - Returns 400 if file already exists (duplicate)
+    """
+    # Verify user exists
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    # Read file content
+    contents = await file.read()
+    
+    # Compute SHA256 hash (content-addressable!)
+    file_hash = hashlib.sha256(contents).hexdigest()
+    
+    # Check if file already exists (deduplication)
+    existing_photo = db.query(Photo).filter(Photo.file_hash == file_hash).first()
+    if existing_photo:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File already exists with id {existing_photo.id}"
+        )
+    
+    # Determine file extension from original filename
+    original_name = file.filename or "unknown"
+    extension = Path(original_name).suffix or ".jpg"
+    
+    # Create filename from hash (content-addressable storage!)
+    filename = f"{file_hash}{extension}"
+    file_path = f"/app/storage/photos/{filename}"
+    
+    # Ensure storage directory exists
+    storage_dir = Path("/app/storage/photos")
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save file to disk
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    logger.info(f"Saved file: {filename} ({len(contents)} bytes, hash: {file_hash[:16]}...)")
+    
+    # Create database record
+    new_photo = Photo(
+        filename=filename,
+        original_filename=original_name,
+        file_path=file_path,
+        file_size=len(contents),
+        mime_type=file.content_type or "application/octet-stream",
+        file_hash=file_hash,
+        user_id=user_id
+    )
+    
+    db.add(new_photo)
+    db.commit()
+    db.refresh(new_photo)
+    
+    logger.info(f"Created photo record: id={new_photo.id}")
+    
+    return new_photo

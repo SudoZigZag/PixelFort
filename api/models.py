@@ -43,6 +43,7 @@ class Photo(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)  # Size in bytes
     mime_type = Column(String)   # image/jpeg, image/png, etc.
+    file_hash = Column(String, unique=True, index=True, nullable=False)
     
     # Who uploaded it (for now, just store user_id as integer)
     user_id = Column(Integer, nullable=False)

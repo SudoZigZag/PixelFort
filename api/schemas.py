@@ -64,6 +64,7 @@ class PhotoResponse(BaseModel):
     file_path: str
     file_size: int
     mime_type: str
+    file_hash: str
     user_id: int
     uploaded_at: datetime 
     
