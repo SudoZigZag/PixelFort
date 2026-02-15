@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod  # Use production Dockerfile
+    container_name: pixelfort-api-prod
+    restart: unless-stopped  # Auto-restart on crashes
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Only mount storage (not code - it's baked into image)
+      - ./storage:/app/storage
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
