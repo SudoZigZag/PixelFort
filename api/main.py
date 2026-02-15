@@ -4,6 +4,7 @@
 from typing import List
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
 import logging
@@ -355,3 +356,68 @@ async def upload_photo(
     logger.info(f"Created photo record: id={new_photo.id}")
     
     return new_photo
+
+@app.get("/photos/{photo_id}/download")
+def download_photo(photo_id: int, db: Session = Depends(get_db)):
+    """
+    Download the actual photo file.
+    
+    - Returns the file for browser download
+    - Sets proper content-type header
+    - Uses original filename for download
+    """
+    # Find photo in database
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    # Check if file exists on disk
+    file_path = Path(photo.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo file not found on disk: {photo.file_path}"
+        )
+    
+    logger.info(f"Serving file: {photo.filename} (original: {photo.original_filename})")
+    
+    # Return file
+    return FileResponse(
+        path=photo.file_path,
+        media_type=photo.mime_type,
+        filename=photo.original_filename  # Browser will use this name when downloading
+    )
+
+@app.get("/photos/{photo_id}/view")
+def view_photo(photo_id: int, db: Session = Depends(get_db)):
+    """
+    View photo in browser (inline, not download).
+    
+    - Returns file for inline display
+    - Good for viewing images in browser
+    """
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    file_path = Path(photo.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo file not found on disk"
+        )
+    
+    # Return file for inline viewing
+    return FileResponse(
+        path=photo.file_path,
+        media_type=photo.mime_type,
+        headers={"Content-Disposition": "inline"}  # View in browser, not download
+    )
