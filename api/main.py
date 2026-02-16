@@ -243,24 +243,6 @@ def list_photos(db: Session = Depends(get_db)):
     return photos
 
 
-@app.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_photo(photo_id: int, db: Session = Depends(get_db)):
-    """
-    Delete a photo by ID.
-    """
-    photo = db.query(Photo).filter(Photo.id == photo_id).first()
-    
-    if not photo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Photo with id {photo_id} not found"
-        )
-    
-    db.delete(photo)
-    db.commit()
-    
-    logger.info(f"Deleted photo: {photo.filename} (id={photo.id})")
-
 @app.get("/photos/{photo_id}", response_model=PhotoResponse)
 def get_photo(photo_id: int, db: Session = Depends(get_db)):
     """
@@ -421,3 +403,46 @@ def view_photo(photo_id: int, db: Session = Depends(get_db)):
         media_type=photo.mime_type,
         headers={"Content-Disposition": "inline"}  # View in browser, not download
     )
+
+@app.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_photo(photo_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a photo by ID.
+    
+    - Removes database record
+    - Deletes actual file from disk
+    - Returns 204 No Content on success
+    """
+    # Find photo in database
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    # Store file path before deleting database record
+    file_path = Path(photo.file_path)
+    filename = photo.filename
+    
+    # Delete database record first
+    db.delete(photo)
+    db.commit()
+    
+    logger.info(f"Deleted photo record: {filename} (id={photo_id})")
+    
+    # Now delete the actual file from disk
+    if file_path.exists():
+        try:
+            file_path.unlink()  # Delete the file
+            logger.info(f"Deleted file from disk: {file_path}")
+        except Exception as e:
+            # File deletion failed, but DB record already gone
+            # Log error but don't fail the request
+            logger.error(f"Failed to delete file {file_path}: {e}")
+            # Note: Database record is already deleted, so we don't rollback
+    else:
+        logger.warning(f"File not found on disk (already deleted?): {file_path}")
+    
+    # Return 204 No Content (successful deletion)
