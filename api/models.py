@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from api.database import Base
@@ -23,6 +24,7 @@ class User(Base):
     # Timestamps (automatically set)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    photos = relationship("Photo", back_populates="owner", cascade="all, delete-orphan")
     
     def __repr__(self):
         """String representation (for debugging)"""
@@ -45,8 +47,8 @@ class Photo(Base):
     mime_type = Column(String)   # image/jpeg, image/png, etc.
     file_hash = Column(String, unique=True, index=True, nullable=False)
     
-    # Who uploaded it (for now, just store user_id as integer)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    owner = relationship("User", back_populates="photos")
     
     # Timestamps
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())

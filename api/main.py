@@ -3,7 +3,7 @@
 
 from typing import List
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
@@ -269,7 +269,7 @@ def list_photos(db: Session = Depends(get_db)):
 @app.post("/photos/upload", response_model=PhotoResponse, status_code=status.HTTP_201_CREATED)
 async def upload_photo(
     file: UploadFile = File(...),
-    user_id: int = 1,  # For now, hardcoded (TODO: get from auth)
+    user_id: int = Form(...),  # For now, hardcoded (TODO: get from auth)
     db: Session = Depends(get_db)
 ):
     """
@@ -446,3 +446,26 @@ def delete_photo(photo_id: int, db: Session = Depends(get_db)):
         logger.warning(f"File not found on disk (already deleted?): {file_path}")
     
     # Return 204 No Content (successful deletion)
+@app.get("/users/{user_id}/photos", response_model=List[PhotoResponse])
+def get_user_photos(user_id: int, db: Session = Depends(get_db)):
+    """
+    Get all photos for a specific user.
+    
+    - Returns empty list if user has no photos
+    - Returns 404 if user doesn't exist
+    """
+    # Check if user exists
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    # Get user's photos using relationship
+    photos = user.photos  # ← This uses the SQLAlchemy relationship!
+    
+    logger.info(f"Retrieved {len(photos)} photos for user {user_id}")
+    
+    return photos
