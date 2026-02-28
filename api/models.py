@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -48,6 +48,17 @@ class Photo(Base):
     file_hash = Column(String, unique=True, index=True, nullable=False)
     
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    thumbnail_path = Column(String)
+
+    # EXIF metadata
+    date_taken = Column(DateTime)  # When photo was actually taken
+    camera_make = Column(String)   # e.g., "Apple", "Canon"
+    camera_model = Column(String)  # e.g., "iPhone 13 Pro"
+    gps_latitude = Column(Float)   # GPS coordinates
+    gps_longitude = Column(Float)
+    width = Column(Integer)        # Image dimensions
+    height = Column(Integer)
+    
     owner = relationship("User", back_populates="photos")
     
     # Timestamps

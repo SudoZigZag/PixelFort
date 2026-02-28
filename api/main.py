@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from api.image_utils import generate_thumbnail, extract_exif_data
 from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
 import logging
 import hashlib
@@ -308,7 +309,10 @@ async def upload_photo(
     
     # Create filename from hash (content-addressable storage!)
     filename = f"{file_hash}{extension}"
+    thumbnail_filename = f"{file_hash}.thumb.jpg"
     file_path = f"/app/storage/photos/{filename}"
+    thumbnail_path = f"/app/storage/photos/{thumbnail_filename}"
+
     
     # Ensure storage directory exists
     storage_dir = Path("/app/storage/photos")
@@ -319,6 +323,14 @@ async def upload_photo(
         f.write(contents)
     
     logger.info(f"Saved file: {filename} ({len(contents)} bytes, hash: {file_hash[:16]}...)")
+
+    # Generate thumbnail
+    thumbnail_generated = generate_thumbnail(file_path, thumbnail_path)
+    if not thumbnail_generated:
+        thumbnail_path = None  # Thumbnail generation failed
+
+    # Extract EXIF data
+    exif_data = extract_exif_data(file_path)
     
     # Create database record
     new_photo = Photo(
@@ -328,9 +340,19 @@ async def upload_photo(
         file_size=len(contents),
         mime_type=file.content_type or "application/octet-stream",
         file_hash=file_hash,
-        user_id=user_id
+        user_id=user_id,
+        # Thumbnail
+        thumbnail_path=thumbnail_path,
+        # EXIF data
+        date_taken=exif_data.get("date_taken"),
+        camera_make=exif_data.get("camera_make"),
+        camera_model=exif_data.get("camera_model"),
+        gps_latitude=exif_data.get("gps_latitude"),
+        gps_longitude=exif_data.get("gps_longitude"),
+        width=exif_data.get("width"),
+        height=exif_data.get("height"),
     )
-    
+
     db.add(new_photo)
     db.commit()
     db.refresh(new_photo)
@@ -469,3 +491,39 @@ def get_user_photos(user_id: int, db: Session = Depends(get_db)):
     logger.info(f"Retrieved {len(photos)} photos for user {user_id}")
     
     return photos
+
+@app.get("/photos/{photo_id}/thumbnail")
+def get_photo_thumbnail(photo_id: int, db: Session = Depends(get_db)):
+    """
+    Get photo thumbnail (fast loading for grid views).
+    
+    Returns 200x200px thumbnail if available, otherwise original.
+    """
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    # Use thumbnail if available, otherwise original
+    if photo.thumbnail_path and Path(photo.thumbnail_path).exists():
+        file_path = photo.thumbnail_path
+        filename = f"thumb_{photo.original_filename}"
+    else:
+        file_path = photo.file_path
+        filename = photo.original_filename
+    
+    # Check if file exists
+    if not Path(file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thumbnail file not found on disk"
+        )
+    
+    return FileResponse(
+        path=file_path,
+        media_type="image/jpeg",
+        headers={"Content-Disposition": "inline"}
+    )

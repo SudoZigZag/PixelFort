@@ -8,6 +8,7 @@ These are DIFFERENT from database models:
 
 from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime
+from typing import Optional
 
 
 class UserCreate(BaseModel):
@@ -67,6 +68,15 @@ class PhotoResponse(BaseModel):
     file_hash: str
     user_id: int
     uploaded_at: datetime 
+    thumbnail_path: Optional[str] = None
+    # EXIF metadata (all optional - might not exist)
+    date_taken: Optional[datetime] = None
+    camera_make: Optional[str] = None
+    camera_model: Optional[str] = None
+    gps_latitude: Optional[float] = None
+    gps_longitude: Optional[float] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
     
     class Config:
         from_attributes = True
