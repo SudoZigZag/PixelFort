@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Copy requirements first (Docker caching optimization)
 COPY api/requirements.txt .
+COPY api/requirements-test.txt .
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -21,6 +22,8 @@ RUN apt-get update && \
 
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
+ # Test requirements
+RUN pip install --no-cache-dir -r requirements-test.txt
 
 # Copy application code
 COPY api/ /app/api/

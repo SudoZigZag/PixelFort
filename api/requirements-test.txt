@@ -1,0 +1,10 @@
+# Testing framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# HTTP client for testing FastAPI
+httpx==0.25.2
+
+# Test data generation
+faker==22.0.0
