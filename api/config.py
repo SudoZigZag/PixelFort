@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     
     # Storage
     STORAGE_PATH: str = Field(default="/app/storage/photos")
+
+    # Security
+    SECRET_KEY: str = Field(default="your-secret-key-change-in-production-min-32-chars")
+    ALGORITHM: str = Field(default="HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24 * 7)  # 7 days
     
     # Computed properties
     @property

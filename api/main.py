@@ -7,7 +7,8 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, F
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.image_utils import generate_thumbnail, extract_exif_data
-from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse
+from api.auth import hash_password, verify_password, create_access_token, get_current_user
+from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse, UserRegister, UserLogin, Token
 import logging
 import hashlib
 
@@ -81,17 +82,9 @@ def list_users(db: Session = Depends(get_db)):
             for user in users
         ]
     }
+    """
 @app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
-    """
-    Create a new user.
-    
-    - Validates email format
-    - Checks for duplicates
-    - Hashes password (fake for now)
-    - Saves to database
-    """
-    # Check if email already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(
@@ -121,6 +114,7 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Created user: {new_user.username} ({new_user.email})")
 
     return new_user
+    """
 
 @app.get("/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int, db: Session = Depends(get_db)):
@@ -140,13 +134,24 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     return user
 
 @app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),  # ← Require authentication
+    db: Session = Depends(get_db)
+):
     """
-    Delete a user by ID.
-
-    - Returns 404 if user doesn't exist
-    - Returns 204 No Content on success
+    Delete a user account (authentication required).
+    
+    - Must be logged in
+    - Can only delete your own account
+    - Cascade deletes all your photos
     """
+    # Check if trying to delete someone else's account
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own account"
+        )
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
@@ -162,15 +167,26 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
     # 204 returns no content (return None or nothing)
 @app.patch("/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_data: UserUpdate, db: Session = Depends(get_db)):
+def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),  # ← Require authentication
+    db: Session = Depends(get_db)
+):
     """
-    Update a user's information.
+    Update a user's information (authentication required).
     
-    - Only provided fields are updated
-    - Returns 404 if user doesn't exist
-    - Returns 400 if email/username already taken
+    - Must be logged in
+    - Can only update your own account
     """
-    # Find user
+    # Check if trying to update someone else's account
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own account"
+        )
+    
+    # Find user (will always be current_user due to check above)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
@@ -270,7 +286,7 @@ def list_photos(db: Session = Depends(get_db)):
 @app.post("/photos/upload", response_model=PhotoResponse, status_code=status.HTTP_201_CREATED)
 async def upload_photo(
     file: UploadFile = File(...),
-    user_id: int = Form(...),  # For now, hardcoded (TODO: get from auth)
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -281,14 +297,6 @@ async def upload_photo(
     - Stores metadata in database
     - Returns 400 if file already exists (duplicate)
     """
-    # Verify user exists
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found"
-        )
-    
     # Read file content
     contents = await file.read()
     
@@ -340,7 +348,7 @@ async def upload_photo(
         file_size=len(contents),
         mime_type=file.content_type or "application/octet-stream",
         file_hash=file_hash,
-        user_id=user_id,
+        user_id=current_user.id,
         # Thumbnail
         thumbnail_path=thumbnail_path,
         # EXIF data
@@ -427,16 +435,31 @@ def view_photo(photo_id: int, db: Session = Depends(get_db)):
     )
 
 @app.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_photo(photo_id: int, db: Session = Depends(get_db)):
+def delete_photo(
+    photo_id: int,
+    current_user: User = Depends(get_current_user),  # ← Require authentication
+    db: Session = Depends(get_db)
+):
     """
-    Delete a photo by ID.
+    Delete a photo by ID (authentication required).
     
-    - Removes database record
-    - Deletes actual file from disk
-    - Returns 204 No Content on success
+    - Must be logged in
+    - Can only delete your own photos
     """
-    # Find photo in database
     photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    # Check ownership - can only delete your own photos!
+    if photo.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own photos"
+        )
     
     if not photo:
         raise HTTPException(
@@ -527,3 +550,89 @@ def get_photo_thumbnail(photo_id: int, db: Session = Depends(get_db)):
         media_type="image/jpeg",
         headers={"Content-Disposition": "inline"}
     )
+
+
+@app.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED)
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    """
+    Register a new user.
+    
+    - Creates user with hashed password
+    - Returns JWT token (automatically logged in)
+    """
+    # Check if email already exists
+    if db.query(User).filter(User.email == user_data.email).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Check if username already exists
+    if db.query(User).filter(User.username == user_data.username).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
+    
+    # Create user with hashed password
+    new_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        hashed_password=hash_password(user_data.password)
+    )
+    
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    logger.info(f"Registered new user: {new_user.username}")
+    
+    # Generate token (auto-login after registration)
+    access_token = create_access_token(data={"sub": str(new_user.id)})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": new_user
+    }
+
+
+@app.post("/auth/login", response_model=Token)
+def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """
+    Login with email and password.
+    
+    - Verifies credentials
+    - Returns JWT token
+    """
+    # Find user by email
+    user = db.query(User).filter(User.email == credentials.email).first()
+    
+    # Check if user exists and password is correct
+    if not user or not verify_password(credentials.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Generate token
+    access_token = create_access_token(data={"sub": str(user.id)})
+    
+    logger.info(f"User logged in: {user.username}")
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+
+@app.get("/auth/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    """
+    Get current authenticated user info.
+    
+    Requires: Bearer token in Authorization header
+    """
+    return current_user
