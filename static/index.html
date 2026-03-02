@@ -367,7 +367,23 @@
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
         </header>
-
+        <div id="adminPanel" class="hidden" style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #667eea; margin-bottom: 20px;">👑 Admin Panel</h2>
+                <!-- User Management -->
+                <div style="margin-bottom: 30px;">
+                    <h3 style="margin-bottom: 15px;">Users</h3>
+                    <div id="adminUserList" style="display: grid; gap: 10px;">
+                            <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+                    
+                <!-- All Photos -->
+                <div>
+                   <h3 style="margin-bottom: 15px;">All Photos</h3>
+                   <p style="color: #666; font-size: 14px;">Total: <span id="totalPhotosCount">0</span></p>
+                </div>
+       </div>
+        
         <!-- Upload Area -->
         <div class="upload-area" id="uploadArea">
             <h2 style="color: #667eea; margin-bottom: 10px;">📤 Upload Photos</h2>
@@ -404,6 +420,7 @@
         let token = localStorage.getItem('token');
         let currentUser = null;
         let currentPhoto = null;
+        let isAdmin = false;
         const API_BASE = window.location.origin;
 
         // Initialize
@@ -435,65 +452,91 @@
             document.getElementById('registerForm').classList.remove('hidden');
         }
 
-        async function login() {
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-            const errorEl = document.getElementById('loginError');
 
-            try {
-                const response = await fetch(`${API_BASE}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
+    async function login() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorEl = document.getElementById('loginError');
 
-                const data = await response.json();
+    try {
+        const response = await fetch(`${API_BASE}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
 
-                if (response.ok) {
-                    token = data.access_token;
-                    localStorage.setItem('token', token);
-                    currentUser = data.user;
-                    showApp();
-                } else {
-                    errorEl.textContent = data.detail || 'Login failed';
-                    errorEl.classList.remove('hidden');
-                }
-            } catch (error) {
-                errorEl.textContent = 'Network error';
-                errorEl.classList.remove('hidden');
+        const data = await response.json();
+
+        if (response.ok) {
+            token = data.access_token;
+            localStorage.setItem('token', token);
+            currentUser = data.user;
+            showApp();
+        } else {
+            // Handle different error formats
+            let errorMessage = 'Login failed';
+            
+            if (typeof data.detail === 'string') {
+                // Simple string error
+                errorMessage = data.detail;
+            } else if (Array.isArray(data.detail)) {
+                // Validation error array
+                errorMessage = data.detail.map(err => err.msg).join(', ');
+            } else if (data.detail && typeof data.detail === 'object') {
+                // Object error
+                errorMessage = JSON.stringify(data.detail);
             }
+            
+            errorEl.textContent = errorMessage;
+            errorEl.classList.remove('hidden');
         }
+    } catch (error) {
+        errorEl.textContent = 'Network error: ' + error.message;
+        errorEl.classList.remove('hidden');
+    }
+    }
 
-        async function register() {
-            const email = document.getElementById('registerEmail').value;
-            const username = document.getElementById('registerUsername').value;
-            const password = document.getElementById('registerPassword').value;
-            const errorEl = document.getElementById('registerError');
+        
+    async function register() {
+    const email = document.getElementById('registerEmail').value;
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;
+    const errorEl = document.getElementById('registerError');
 
-            try {
-                const response = await fetch(`${API_BASE}/auth/register`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, username, password })
-                });
+    try {
+        const response = await fetch(`${API_BASE}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, username, password })
+        });
 
-                const data = await response.json();
+        const data = await response.json();
 
-                if (response.ok) {
-                    token = data.access_token;
-                    localStorage.setItem('token', token);
-                    currentUser = data.user;
-                    showApp();
-                } else {
-                    errorEl.textContent = data.detail || 'Registration failed';
-                    errorEl.classList.remove('hidden');
-                }
-            } catch (error) {
-                errorEl.textContent = 'Network error';
-                errorEl.classList.remove('hidden');
+        if (response.ok) {
+            token = data.access_token;
+            localStorage.setItem('token', token);
+            currentUser = data.user;
+            showApp();
+        } else {
+            // Handle different error formats
+            let errorMessage = 'Registration failed';
+            
+            if (typeof data.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (Array.isArray(data.detail)) {
+                errorMessage = data.detail.map(err => err.msg).join(', ');
+            } else if (data.detail && typeof data.detail === 'object') {
+                errorMessage = JSON.stringify(data.detail);
             }
+            
+            errorEl.textContent = errorMessage;
+            errorEl.classList.remove('hidden');
         }
-
+    } catch (error) {
+        errorEl.textContent = 'Network error: ' + error.message;
+        errorEl.classList.remove('hidden');
+    }
+}
         async function loadUser() {
             try {
                 const response = await fetch(`${API_BASE}/auth/me`, {
@@ -502,7 +545,16 @@
 
                 if (response.ok) {
                     currentUser = await response.json();
+                    isAdmin = currentUser.is_admin;
+                    console.log('isAdmin:', isAdmin);
                     document.getElementById('username').textContent = currentUser.username;
+                    
+                    if (isAdmin) {
+                        console.log('Showing admin panel');
+                        document.getElementById('adminPanel').classList.remove('hidden');
+                        loadAdminData();
+                    }
+                    
                     showApp();
                 } else {
                     logout();
@@ -511,7 +563,6 @@
                 logout();
             }
         }
-
         function logout() {
             token = null;
             currentUser = null;
@@ -713,6 +764,130 @@
                 closeModal();
             }
         });
+        async function loadAdminData() {
+            await loadAdminUsers();
+            await loadAdminPhotoCount();
+        }
+
+        async function loadAdminUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const users = data.users || [];
+
+                const userListHtml = users.map(user => `
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${user.username}</strong>
+                            <span style="color: #666; font-size: 14px;">(${user.email})</span>
+                            ${user.is_admin ? '<span style="background: #667eea; color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 10px;">ADMIN</span>' : ''}
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            ${!user.is_admin ? `
+                                <button class="btn" style="padding: 5px 10px; font-size: 12px;" onclick="makeAdmin(${user.id})">
+                                    Make Admin
+                                </button>
+                            ` : user.id !== currentUser.id ? `
+                                <button class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;" onclick="removeAdmin(${user.id})">
+                                    Remove Admin
+                                </button>
+                            ` : ''}
+                            ${user.id !== currentUser.id ? `
+                                <button class="btn" style="padding: 5px 10px; font-size: 12px; background: #f44336;" onclick="deleteUserAdmin(${user.id})">
+                                    Delete
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                document.getElementById('adminUserList').innerHTML = userListHtml;
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+
+        async function loadAdminPhotoCount() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/photos`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const photos = await response.json();
+                    document.getElementById('totalPhotosCount').textContent = photos.length;
+                }
+            } catch (error) {
+                console.error('Failed to load photo count:', error);
+            }
+        }
+
+        async function makeAdmin(userId) {
+            if (!confirm('Grant admin privileges to this user?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}/make-admin`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    loadAdminUsers();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to grant admin');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        async function removeAdmin(userId) {
+            if (!confirm('Remove admin privileges from this user?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}/remove-admin`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    loadAdminUsers();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to remove admin');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
+
+        async function deleteUserAdmin(userId) {
+            if (!confirm('Delete this user? This will delete all their photos!')) return;
+            if (!confirm('Are you REALLY sure? This cannot be undone!')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    loadAdminUsers();
+                    loadPhotos();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to delete user');
+                }
+            } catch (error) {
+                alert('Network error');
+            }
+        }
     </script>
 </body>
 </html>

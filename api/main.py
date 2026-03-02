@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.image_utils import generate_thumbnail, extract_exif_data
-from api.auth import hash_password, verify_password, create_access_token, get_current_user
+from api.auth import hash_password, verify_password, create_access_token, get_current_user, get_current_admin
 from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse, UserRegister, UserLogin, Token
 import logging
 import hashlib
@@ -645,3 +645,177 @@ def get_me(current_user: User = Depends(get_current_user)):
     Requires: Bearer token in Authorization header
     """
     return current_user
+
+# ============================================
+# Admin Endpoints (NEW!)
+# ============================================
+
+@app.get("/admin/users")
+def admin_list_users(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """List all users (admin only)."""
+    users = db.query(User).all()
+    
+    # Convert to dict manually
+    users_dict = [{
+        "id": u.id,
+        "email": u.email,
+        "username": u.username,
+        "is_admin": u.is_admin,
+        "created_at": u.created_at.isoformat() if u.created_at else None
+    } for u in users]
+    
+    return {
+        "count": len(users),
+        "users": users_dict
+    }
+
+@app.post("/admin/users/{user_id}/make-admin", response_model=UserResponse)
+def admin_make_user_admin(
+    user_id: int,
+    admin: User = Depends(get_current_admin),  # ← Admin only
+    db: Session = Depends(get_db)
+):
+    """
+    Grant admin privileges to a user (admin only).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    user.is_admin = True
+    db.commit()
+    db.refresh(user)
+    
+    logger.info(f"Admin {admin.username} granted admin to user {user.username}")
+    
+    return user
+
+
+@app.post("/admin/users/{user_id}/remove-admin", response_model=UserResponse)
+def admin_remove_user_admin(
+    user_id: int,
+    admin: User = Depends(get_current_admin),  # ← Admin only
+    db: Session = Depends(get_db)
+):
+    """
+    Remove admin privileges from a user (admin only).
+    
+    Cannot remove admin from yourself.
+    """
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove admin from yourself"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    user.is_admin = False
+    db.commit()
+    db.refresh(user)
+    
+    logger.info(f"Admin {admin.username} removed admin from user {user.username}")
+    
+    return user
+
+
+@app.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_user(
+    user_id: int,
+    admin: User = Depends(get_current_admin),  # ← Admin only
+    db: Session = Depends(get_db)
+):
+    """
+    Delete any user (admin only).
+    
+    Cannot delete yourself.
+    """
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete yourself"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found"
+        )
+    
+    username = user.username
+    
+    # Delete user (cascade will delete their photos)
+    db.delete(user)
+    db.commit()
+    
+    logger.info(f"Admin {admin.username} deleted user {username}")
+
+
+@app.get("/admin/photos")
+def admin_list_all_photos(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """List all photos from all users (admin only)."""
+    photos = db.query(Photo).all()
+    
+    # Convert to dict manually
+    photos_dict = [{
+        "id": p.id,
+        "filename": p.filename,
+        "original_filename": p.original_filename,
+        "user_id": p.user_id,
+        "file_size": p.file_size,
+        "camera_model": p.camera_model,
+        "uploaded_at": p.uploaded_at.isoformat() if p.uploaded_at else None
+    } for p in photos]
+    
+    return photos_dict
+
+@app.delete("/admin/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_any_photo(
+    photo_id: int,
+    admin: User = Depends(get_current_admin),  # ← Admin only
+    db: Session = Depends(get_db)
+):
+    """
+    Delete any photo regardless of owner (admin only).
+    """
+    photo = db.query(Photo).filter(Photo.id == photo_id).first()
+    
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Photo with id {photo_id} not found"
+        )
+    
+    # Store info before deleting
+    file_path = Path(photo.file_path)
+    filename = photo.filename
+    
+    # Delete database record
+    db.delete(photo)
+    db.commit()
+    
+    # Delete file
+    if file_path.exists():
+        try:
+            file_path.unlink()
+            logger.info(f"Admin {admin.username} deleted photo {filename}")
+        except Exception as e:
+            logger.error(f"Failed to delete file {file_path}: {e}")

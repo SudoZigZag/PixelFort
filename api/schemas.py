@@ -29,7 +29,9 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    is_admin: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True  # Allows creating from SQLAlchemy model
