@@ -4,6 +4,8 @@
 from typing import List
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.image_utils import generate_thumbnail, extract_exif_data
@@ -26,8 +28,15 @@ app = FastAPI(
     description="Photo NAS System with Configuration Management"
 )
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # Log startup info
 logger.info(f"Starting {settings.APP_NAME} in {settings.ENVIRONMENT} mode")
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Serve the web UI."""
+    with open("static/index.html", "r") as f:
+        return f.read()
 
 # Root endpoint - returns JSON when you visit http://localhost:8000
 @app.get("/")
