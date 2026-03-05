@@ -404,6 +404,7 @@
             <h1>📸 PixelFort</h1>
             <div class="user-info">
                 <span id="username">User</span>
+                <button class="btn" onclick="showSettingsModal()" style="margin-right: 10px;">⚙️ Settings</button>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
         </header>
@@ -436,6 +437,40 @@
             <div class="loading">Loading photos...</div>
         </div>
     </div>
+        <!-- Settings Modal (ADD THIS BEFORE PHOTO MODAL) -->
+        <div id="settingsModal" class="modal">
+            <div class="modal-content" style="max-width: 500px;">
+                <button class="modal-close" onclick="closeSettingsModal()">×</button>
+                
+                <div style="padding: 30px;">
+                    <h2 style="margin-bottom: 20px;">⚙️ Settings</h2>
+                    
+                    <div id="passwordChangeError" class="error hidden"></div>
+                    <div id="passwordChangeSuccess" class="success hidden"></div>
+                    
+                    <h3 style="margin-bottom: 15px;">Change Password</h3>
+                    
+                    <div class="form-group">
+                        <label>Current Password</label>
+                        <input type="password" id="currentPassword" placeholder="Current password">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>New Password</label>
+                        <input type="password" id="newPassword" placeholder="New password (min 8 characters)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Confirm New Password</label>
+                        <input type="password" id="confirmPassword" placeholder="Confirm new password">
+                    </div>
+                    
+                    <button class="btn" style="width: 100%;" onclick="changePassword()">
+                        Change Password
+                    </button>
+                </div>
+            </div>
+        </div>
 
     <!-- Photo Modal -->
     <div id="photoModal" class="modal">
@@ -934,7 +969,96 @@
                 closeModal();
             }
         });
+        function showSettingsModal() {
+            document.getElementById('settingsModal').classList.add('active');
+            // Clear form
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            document.getElementById('passwordChangeError').classList.add('hidden');
+            document.getElementById('passwordChangeSuccess').classList.add('hidden');
+        }
 
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        async function changePassword() {
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const errorEl = document.getElementById('passwordChangeError');
+            const successEl = document.getElementById('passwordChangeSuccess');
+
+            // Hide previous messages
+            errorEl.classList.add('hidden');
+            successEl.classList.add('hidden');
+
+            // Validation
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                errorEl.textContent = 'All fields are required';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (newPassword.length < 8) {
+                errorEl.textContent = 'New password must be at least 8 characters';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                errorEl.textContent = 'New passwords do not match';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            // Change password
+            try {
+                const response = await fetch(`${API_BASE}/users/${currentUser.id}/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    successEl.textContent = 'Password changed successfully!';
+                    successEl.classList.remove('hidden');
+                    
+                    // Clear form
+                    document.getElementById('currentPassword').value = '';
+                    document.getElementById('newPassword').value = '';
+                    document.getElementById('confirmPassword').value = '';
+                    
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        closeSettingsModal();
+                    }, 2000);
+                } else {
+                    let errorMessage = 'Failed to change password';
+                    
+                    if (typeof data.detail === 'string') {
+                        errorMessage = data.detail;
+                    } else if (Array.isArray(data.detail)) {
+                        errorMessage = data.detail.map(err => err.msg).join(', ');
+                    }
+                    
+                    errorEl.textContent = errorMessage;
+                    errorEl.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorEl.textContent = 'Network error: ' + error.message;
+                errorEl.classList.remove('hidden');
+            }
+        }
         // Admin Functions
         // ... (your existing admin functions) ...
         // PWA Install Prompt (ADD BEFORE SERVICE WORKER REGISTRATION)

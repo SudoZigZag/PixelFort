@@ -33,6 +33,7 @@ COPY --from=builder /root/.local /root/.local
 
 # Copy application code
 COPY api/ /app/api/
+COPY static/ /app/static/
 
 # Create storage directories
 RUN mkdir -p /app/storage/db /app/storage/photos

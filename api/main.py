@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from api.image_utils import generate_thumbnail, extract_exif_data
 from api.auth import hash_password, verify_password, create_access_token, get_current_user, get_current_admin
-from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse, UserRegister, UserLogin, Token
+from api.schemas import UserCreate, UserResponse, UserUpdate, PhotoCreate, PhotoResponse, UserRegister, UserLogin, Token, PasswordChange
 import logging
 import hashlib
 
@@ -819,3 +819,39 @@ def admin_delete_any_photo(
             logger.info(f"Admin {admin.username} deleted photo {filename}")
         except Exception as e:
             logger.error(f"Failed to delete file {file_path}: {e}")
+
+@app.post("/users/{user_id}/change-password")
+def change_password(
+    user_id: int,
+    password_data: PasswordChange,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Change user password.
+    
+    - Must be logged in
+    - Can only change your own password
+    - Must provide current password
+    """
+    # Check if trying to change someone else's password
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only change your own password"
+        )
+    
+    # Verify current password
+    if not verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+    
+    # Update password
+    current_user.hashed_password = hash_password(password_data.new_password)
+    db.commit()
+    
+    logger.info(f"User {current_user.username} changed their password")
+    
+    return {"message": "Password changed successfully"}

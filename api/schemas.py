@@ -10,6 +10,10 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import date, datetime
 from typing import Optional
 
+class PasswordChange(BaseModel):
+    """Schema for changing password."""
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=72)
 
 class UserCreate(BaseModel):
     """
